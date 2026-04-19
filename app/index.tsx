@@ -17,7 +17,7 @@ type SopData = Record<string, SopItem[]>;
 const sopData = sopDataRaw as SopData;
 
 // ---- images ----
-const imageModules = import.meta.glob('../image/*/*.png', { eager: true, as: 'url' });
+const imageModules = import.meta.glob('../image/*/*.png', { eager: true, query: '?url', import: 'default' });
 
 interface ImageEntry {
   src: string;
