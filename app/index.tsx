@@ -303,7 +303,7 @@ const ProgressBar: React.FC<{
   }, []);
 
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: PointerEvent) => {
       if (!isDragging.current || !barRef.current) return;
       animCtrl.current?.stop();
       const rect = barRef.current.getBoundingClientRect();
@@ -313,17 +313,19 @@ const ProgressBar: React.FC<{
       scrollX.set(maxScroll - p * (maxScroll - minScroll));
     };
     const onUp = () => { isDragging.current = false; };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
     return () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
     };
   }, []);
 
   const dotLeft = useTransform(dotX, v => v - DOT_R);
 
-  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seek = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!barRef.current) return;
     animCtrl.current?.stop();
     const rect = barRef.current.getBoundingClientRect();
@@ -337,17 +339,15 @@ const ProgressBar: React.FC<{
     <div
       ref={barRef}
       className="fixed bottom-12 left-12 cursor-pointer"
-      style={{ width: BAR_W, height: DOT_R * 2 + 4 }}
-      onClick={seek}
-      onMouseDown={(e) => e.stopPropagation()}
+      style={{ width: BAR_W, height: DOT_R * 2 + 4, touchAction: 'none' }}
+      onPointerDown={(e) => { e.stopPropagation(); seek(e); }}
     >
       <div className="absolute bg-neutral-200" style={{ left: 0, right: 0, top: '50%', height: 1, transform: 'translateY(-50%)' }} />
       <motion.div className="absolute bg-neutral-400" style={{ left: 0, width: dotX, top: '50%', height: 1, transform: 'translateY(-50%)' }} />
       <motion.div
         className="absolute rounded-full bg-neutral-600"
         style={{ left: dotLeft, top: '50%', width: DOT_R * 2, height: DOT_R * 2, y: '-50%', cursor: 'grab' }}
-        onMouseDown={(e) => { animCtrl.current?.stop(); isDragging.current = true; e.preventDefault(); e.stopPropagation(); }}
-        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => { animCtrl.current?.stop(); isDragging.current = true; e.preventDefault(); e.stopPropagation(); }}
       />
     </div>
   );
@@ -356,6 +356,8 @@ const ProgressBar: React.FC<{
 // ---- Gallery ----
 const Gallery = () => {
   const [selected, setSelected] = useState<number | null>(null);
+  const selectedRef = useRef<number | null>(null);
+  selectedRef.current = selected;
   const [activeCategory, setActiveCategory] = useState(CATEGORY_ORDER[0]);
   const mouseX = useMotionValue(-1000);
   // Single display value — set directly during drag, animated after
@@ -387,7 +389,7 @@ const Gallery = () => {
 
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
-      if (selected !== null) return;
+      if (selectedRef.current !== null) return;
       e.preventDefault();
       animCtrl.current?.stop();
       const delta = e.deltaY || e.deltaX;
@@ -397,30 +399,28 @@ const Gallery = () => {
     };
     window.addEventListener('wheel', handleWheel, { passive: false });
     return () => window.removeEventListener('wheel', handleWheel);
-  }, [selected]);
+  }, []);
 
-  // Global mouse events for drag-to-pan
+  // Unified pointer events (mouse + touch/stylus)
   useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
+    const onPointerMove = (e: PointerEvent) => {
       if (!isDraggingGallery.current) return;
       const dx = e.clientX - dragStartX.current;
       if (Math.abs(dx) > 3) dragMoved.current = true;
       const { minScroll, maxScroll } = computeBounds(window.innerWidth);
-      const next = Math.min(Math.max(dragStartDisplay.current + dx, minScroll), maxScroll);
-      displayX.set(next);
-      mouseX.set(e.pageX);
-      // keep a 100ms rolling window for velocity sampling
+      displayX.set(Math.min(Math.max(dragStartDisplay.current + dx, minScroll), maxScroll));
+      if (e.pointerType === 'mouse') mouseX.set(e.pageX);
       const now = e.timeStamp;
       dragHistory.current.push({ x: e.clientX, t: now });
       dragHistory.current = dragHistory.current.filter(p => now - p.t <= 100);
     };
-    const onMouseUp = (e: MouseEvent) => {
+    const onPointerUp = (e: PointerEvent) => {
+      if (!isDraggingGallery.current) return;
       wasDragging.current = dragMoved.current;
       isDraggingGallery.current = false;
       document.body.style.userSelect = '';
-      document.body.style.cursor = '';
+      if (e.pointerType === 'mouse') document.body.style.cursor = '';
 
-      // Momentum: fixed 500px in drag direction, derived from 100ms velocity window
       if (dragMoved.current) {
         const history = dragHistory.current;
         let vx = 0;
@@ -428,7 +428,7 @@ const Gallery = () => {
           const oldest = history[0];
           const newest = history[history.length - 1];
           const dt = newest.t - oldest.t;
-          if (dt > 0) vx = (newest.x - oldest.x) / dt; // px/ms
+          if (dt > 0) vx = (newest.x - oldest.x) / dt;
         }
         if (Math.abs(vx) > 0.02) {
           const dir = vx > 0 ? 1 : -1;
@@ -439,11 +439,13 @@ const Gallery = () => {
         dragHistory.current = [];
       }
     };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
     return () => {
-      window.removeEventListener('mousemove', onMouseMove);
-      window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
     };
   }, []);
 
@@ -453,9 +455,9 @@ const Gallery = () => {
   };
   const handleMouseLeave = () => mouseX.set(-1000);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handlePointerDown = (e: React.PointerEvent) => {
     if (selected !== null) return;
-    if (e.button !== 0) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     animCtrl.current?.stop();
     isDraggingGallery.current = true;
@@ -464,15 +466,16 @@ const Gallery = () => {
     dragStartDisplay.current = displayX.get();
     dragHistory.current = [{ x: e.clientX, t: e.nativeEvent.timeStamp }];
     document.body.style.userSelect = 'none';
-    document.body.style.cursor = 'grabbing';
+    if (e.pointerType === 'mouse') document.body.style.cursor = 'grabbing';
   };
 
   return (
     <main
       className="relative w-screen h-screen bg-[#FBFBFB] overflow-hidden flex flex-col justify-center"
+      style={{ touchAction: 'none' }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      onMouseDown={handleMouseDown}
+      onPointerDown={handlePointerDown}
     >
       {/* Top-left title */}
       <div className="absolute top-10 left-12 z-20 pointer-events-none">
@@ -537,6 +540,5 @@ const Gallery = () => {
   );
 };
 
-const App = () => <Gallery />;
 const root = createRoot(document.getElementById('root')!);
-root.render(<App />);
+root.render(<Gallery />);

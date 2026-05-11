@@ -1,20 +1,48 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# AIGC 提示词语料库画廊
 
-# Run and deploy your AI Studio app
+> 毕业设计展示应用 — AIGC提示词语料库构建在建筑插画风格中的运用
 
-This contains everything you need to run your app locally.
+## 项目简介
 
-View your app in AI Studio: https://ai.studio/apps/0601d515-7a95-4ee5-8af0-9d486b9f12cb
+基于 React + Framer Motion 构建的交互式图片画廊，展示建筑插画风格的 AIGC 提示词语料库。支持横向拖拽/滚轮浏览，点击图片可查看对应的正向提示词、反向提示词及采纳建议。
 
-## Run Locally
+## 技术栈
 
-**Prerequisites:**  Node.js
+- **React 19** + **TypeScript**
+- **Framer Motion** — 动画与手势
+- **Tailwind CSS** — 样式（CDN）
+- **Vite** — 构建工具
 
+## 本地运行
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+**前置条件：** Node.js
+
+```bash
+# 安装依赖
+npm install
+
+# 启动开发服务器（http://localhost:3000）
+npm run dev
+
+# 构建生产版本
+npm run build
+```
+
+## 数据结构
+
+- 提示词数据：`../doc/SOP_v3.0/SOP_v3.0.json`
+- 配套图片：`../image/<分类>/<风格名称（英）>.png`
+
+## 交互说明
+
+| 操作 | 效果 |
+|------|------|
+| 鼠标悬停 | 图片展开放大 |
+| 滚轮 / 横向拖拽 | 浏览画廊 |
+| 右上角分类导航 | 跳转到对应分类 |
+| 底部进度条 | 拖拽定位 |
+| 点击图片 | 查看详细提示词 |
+
+---
+
+答辩者：刘雪嵩　　指导教师：姚乐飞
