@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { motion, AnimatePresence, useMotionValue, useSpring, useTransform, MotionValue } from 'framer-motion';
+import { motion, AnimatePresence, animate, useMotionValue, useSpring, useTransform, MotionValue } from 'framer-motion';
 import sopDataRaw from '../doc/SOP_v3.0/SOP_v3.0.json';
 
 // ---- types ----
@@ -125,6 +125,7 @@ const ArchivalSlice: React.FC<SliceProps> = ({ entry, mouseX, onSelect }) => {
           src={entry.src}
           className="absolute inset-0 w-full h-full object-cover pointer-events-none"
           alt={entry.name}
+          draggable={false}
         />
         {/* Auto-contrast label via mix-blend-mode: difference */}
         <motion.div
@@ -179,8 +180,22 @@ const CategoryNav: React.FC<{
 );
 
 // ---- Detail Panel ----
+const BASE_ITEM: Record<string, SopItem | undefined> = {
+  '立面设计': sopData['立面设计']?.find(i => i['风格名称'] === '基础提示词'),
+  '材质质感': sopData['材质质感']?.[0],
+};
+
 const DetailPanel: React.FC<{ entry: ImageEntry; onClose: () => void }> = ({ entry, onClose }) => {
   const { data } = entry;
+
+  // Compute displayed prompts: prepend base item for special categories
+  const base = BASE_ITEM[entry.category];
+  const isBaseItem = base && data === base;
+  const posEn  = (base && !isBaseItem) ? `${base['正向提示词']}\n${data?.['正向提示词'] ?? ''}` : data?.['正向提示词'] ?? '';
+  const posZh  = (base && !isBaseItem) ? `${base['提示词（中）']}\n${data?.['提示词（中）'] ?? ''}` : data?.['提示词（中）'] ?? '';
+  const negEn  = (base && !isBaseItem) ? `${base['反向提示词']}, ${data?.['反向提示词'] ?? ''}` : data?.['反向提示词'] ?? '';
+  const negZh  = (base && !isBaseItem) ? `${base['反向提示词（中）']}，${data?.['反向提示词（中）'] ?? ''}` : data?.['反向提示词（中）'] ?? '';
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -226,11 +241,11 @@ const DetailPanel: React.FC<{ entry: ImageEntry; onClose: () => void }> = ({ ent
                 <div>
                   <label className="text-[8px] font-mono text-neutral-400 uppercase tracking-[0.25em] block mb-2">正向提示词</label>
                   <div className="grid grid-cols-2 gap-0 border border-neutral-100 overflow-hidden">
-                    <div className="bg-neutral-50 p-4 font-mono text-xs text-neutral-700 leading-relaxed break-all border-r border-neutral-100">
-                      {data['正向提示词']}
+                    <div className="bg-neutral-50 p-4 font-mono text-xs text-neutral-700 leading-relaxed break-all border-r border-neutral-100 whitespace-pre-wrap">
+                      {posEn}
                     </div>
-                    <div className="bg-neutral-50 p-4 text-xs text-neutral-500 leading-relaxed">
-                      {data['提示词（中）']}
+                    <div className="bg-neutral-50 p-4 text-xs text-neutral-500 leading-relaxed whitespace-pre-wrap">
+                      {posZh}
                     </div>
                   </div>
                 </div>
@@ -238,11 +253,11 @@ const DetailPanel: React.FC<{ entry: ImageEntry; onClose: () => void }> = ({ ent
                 <div>
                   <label className="text-[8px] font-mono text-red-300 uppercase tracking-[0.25em] block mb-2">反向提示词</label>
                   <div className="grid grid-cols-2 gap-0 border border-red-100/60 overflow-hidden">
-                    <div className="bg-red-50/40 p-4 font-mono text-xs text-neutral-600 leading-relaxed break-all border-r border-red-100/60">
-                      {data['反向提示词']}
+                    <div className="bg-red-50/40 p-4 font-mono text-xs text-neutral-600 leading-relaxed break-all border-r border-red-100/60 whitespace-pre-wrap">
+                      {negEn}
                     </div>
-                    <div className="bg-red-50/40 p-4 text-xs text-neutral-500 leading-relaxed">
-                      {data['反向提示词（中）']}
+                    <div className="bg-red-50/40 p-4 text-xs text-neutral-500 leading-relaxed whitespace-pre-wrap">
+                      {negZh}
                     </div>
                   </div>
                 </div>
@@ -268,7 +283,10 @@ const DetailPanel: React.FC<{ entry: ImageEntry; onClose: () => void }> = ({ ent
 const BAR_W = 256;
 const DOT_R = 5;
 
-const ProgressBar: React.FC<{ scrollX: MotionValue<number> }> = ({ scrollX }) => {
+const ProgressBar: React.FC<{
+  scrollX: MotionValue<number>;
+  animCtrl: React.MutableRefObject<ReturnType<typeof animate> | null>;
+}> = ({ scrollX, animCtrl }) => {
   const barRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const dotX = useMotionValue(0);
@@ -287,6 +305,7 @@ const ProgressBar: React.FC<{ scrollX: MotionValue<number> }> = ({ scrollX }) =>
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!isDragging.current || !barRef.current) return;
+      animCtrl.current?.stop();
       const rect = barRef.current.getBoundingClientRect();
       const p = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
       dotX.set(p * BAR_W);
@@ -304,8 +323,9 @@ const ProgressBar: React.FC<{ scrollX: MotionValue<number> }> = ({ scrollX }) =>
 
   const dotLeft = useTransform(dotX, v => v - DOT_R);
 
-  const handleBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!barRef.current) return;
+    animCtrl.current?.stop();
     const rect = barRef.current.getBoundingClientRect();
     const p = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
     dotX.set(p * BAR_W);
@@ -318,14 +338,15 @@ const ProgressBar: React.FC<{ scrollX: MotionValue<number> }> = ({ scrollX }) =>
       ref={barRef}
       className="fixed bottom-12 left-12 cursor-pointer"
       style={{ width: BAR_W, height: DOT_R * 2 + 4 }}
-      onClick={handleBarClick}
+      onClick={seek}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <div className="absolute bg-neutral-200" style={{ left: 0, right: 0, top: '50%', height: 1, transform: 'translateY(-50%)' }} />
       <motion.div className="absolute bg-neutral-400" style={{ left: 0, width: dotX, top: '50%', height: 1, transform: 'translateY(-50%)' }} />
       <motion.div
         className="absolute rounded-full bg-neutral-600"
         style={{ left: dotLeft, top: '50%', width: DOT_R * 2, height: DOT_R * 2, y: '-50%', cursor: 'grab' }}
-        onMouseDown={(e) => { isDragging.current = true; e.preventDefault(); e.stopPropagation(); }}
+        onMouseDown={(e) => { animCtrl.current?.stop(); isDragging.current = true; e.preventDefault(); e.stopPropagation(); }}
         onClick={(e) => e.stopPropagation()}
       />
     </div>
@@ -337,10 +358,19 @@ const Gallery = () => {
   const [selected, setSelected] = useState<number | null>(null);
   const [activeCategory, setActiveCategory] = useState(CATEGORY_ORDER[0]);
   const mouseX = useMotionValue(-1000);
-  const scrollX = useMotionValue(0);
-  const smoothScrollX = useSpring(scrollX, { stiffness: 80, damping: 24 });
+  // Single display value — set directly during drag, animated after
+  const displayX = useMotionValue(0);
+  const animCtrl = useRef<ReturnType<typeof animate> | null>(null);
 
-  // Track active category from scroll position
+  // drag-to-pan state
+  const isDraggingGallery = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartDisplay = useRef(0);
+  const dragMoved = useRef(false);
+  const wasDragging = useRef(false);
+  const dragHistory = useRef<{ x: number; t: number }[]>([]);
+
+  // Track active category from displayX
   useEffect(() => {
     const updateActive = (val: number) => {
       const winWidth = window.innerWidth;
@@ -351,22 +381,71 @@ const Gallery = () => {
       const cat = IMAGES[clamped]?.category;
       if (cat) setActiveCategory(cat);
     };
-    updateActive(scrollX.get());
-    return scrollX.on('change', updateActive);
+    updateActive(displayX.get());
+    return displayX.on('change', updateActive);
   }, []);
 
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
       if (selected !== null) return;
       e.preventDefault();
+      animCtrl.current?.stop();
       const delta = e.deltaY || e.deltaX;
-      const newScroll = scrollX.get() - delta * 1.8;
       const { minScroll, maxScroll } = computeBounds(window.innerWidth);
-      scrollX.set(Math.min(Math.max(newScroll, minScroll), maxScroll));
+      const target = Math.min(Math.max(displayX.get() - delta * 5.5, minScroll), maxScroll);
+      animCtrl.current = animate(displayX, target, { type: 'spring', stiffness: 80, damping: 24, mass: 1 });
     };
     window.addEventListener('wheel', handleWheel, { passive: false });
     return () => window.removeEventListener('wheel', handleWheel);
   }, [selected]);
+
+  // Global mouse events for drag-to-pan
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDraggingGallery.current) return;
+      const dx = e.clientX - dragStartX.current;
+      if (Math.abs(dx) > 3) dragMoved.current = true;
+      const { minScroll, maxScroll } = computeBounds(window.innerWidth);
+      const next = Math.min(Math.max(dragStartDisplay.current + dx, minScroll), maxScroll);
+      displayX.set(next);
+      mouseX.set(e.pageX);
+      // keep a 100ms rolling window for velocity sampling
+      const now = e.timeStamp;
+      dragHistory.current.push({ x: e.clientX, t: now });
+      dragHistory.current = dragHistory.current.filter(p => now - p.t <= 100);
+    };
+    const onMouseUp = (e: MouseEvent) => {
+      wasDragging.current = dragMoved.current;
+      isDraggingGallery.current = false;
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+
+      // Momentum: fixed 500px in drag direction, derived from 100ms velocity window
+      if (dragMoved.current) {
+        const history = dragHistory.current;
+        let vx = 0;
+        if (history.length >= 2) {
+          const oldest = history[0];
+          const newest = history[history.length - 1];
+          const dt = newest.t - oldest.t;
+          if (dt > 0) vx = (newest.x - oldest.x) / dt; // px/ms
+        }
+        if (Math.abs(vx) > 0.02) {
+          const dir = vx > 0 ? 1 : -1;
+          const { minScroll, maxScroll } = computeBounds(window.innerWidth);
+          const target = Math.min(Math.max(displayX.get() + dir * 500, minScroll), maxScroll);
+          animCtrl.current = animate(displayX, target, { type: 'spring', stiffness: 55, damping: 18, mass: 1 });
+        }
+        dragHistory.current = [];
+      }
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (selected !== null) return;
@@ -374,11 +453,26 @@ const Gallery = () => {
   };
   const handleMouseLeave = () => mouseX.set(-1000);
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (selected !== null) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    animCtrl.current?.stop();
+    isDraggingGallery.current = true;
+    dragMoved.current = false;
+    dragStartX.current = e.clientX;
+    dragStartDisplay.current = displayX.get();
+    dragHistory.current = [{ x: e.clientX, t: e.nativeEvent.timeStamp }];
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
+  };
+
   return (
     <main
       className="relative w-screen h-screen bg-[#FBFBFB] overflow-hidden flex flex-col justify-center"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onMouseDown={handleMouseDown}
     >
       {/* Top-left title */}
       <div className="absolute top-10 left-12 z-20 pointer-events-none">
@@ -391,10 +485,10 @@ const Gallery = () => {
       </div>
 
       {/* Top-right category nav */}
-      <CategoryNav scrollX={scrollX} activeCategory={activeCategory} />
+      <CategoryNav scrollX={displayX} activeCategory={activeCategory} />
 
       <motion.div
-        style={{ x: smoothScrollX }}
+        style={{ x: displayX }}
         className="flex items-end h-[75vh] px-[35vw]"
       >
         {IMAGES.map((entry, i) => (
@@ -402,12 +496,15 @@ const Gallery = () => {
             key={i}
             entry={entry}
             mouseX={mouseX}
-            onSelect={() => setSelected(i)}
+            onSelect={() => {
+              if (wasDragging.current) { wasDragging.current = false; return; }
+              setSelected(i);
+            }}
           />
         ))}
       </motion.div>
 
-      <ProgressBar scrollX={scrollX} />
+      <ProgressBar scrollX={displayX} animCtrl={animCtrl} />
 
       <AnimatePresence>
         {selected !== null && (
@@ -418,7 +515,7 @@ const Gallery = () => {
       {/* Bottom-right hint */}
       <div className="fixed bottom-10 right-12 text-right pointer-events-none">
         <p className="song-ti tracking-[0.3em] text-neutral-400" style={{ fontSize: 13 }}>
-          滚轮横向浏览<br />
+          滚轮 / 拖拽横向浏览<br />
           点击查看详情
         </p>
       </div>
