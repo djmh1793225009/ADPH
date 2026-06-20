@@ -17,7 +17,7 @@ type SopData = Record<string, SopItem[]>;
 const sopData = sopDataRaw as SopData;
 
 // ---- images ----
-const imageModules = import.meta.glob('../image/*/*.png', { eager: true, query: '?url', import: 'default' });
+const imageModules = import.meta.glob('../image/*/*.webp', { eager: true, query: '?url', import: 'default' });
 
 interface ImageEntry {
   src: string;
@@ -52,7 +52,7 @@ const buildEntries = (): ImageEntry[] => {
     const parts = path.replace('../image/', '').split('/');
     if (parts.length !== 2) continue;
     const [cat, file] = parts;
-    const name = file.replace(/\.png$/i, '');
+    const name = file.replace(/\.webp$/i, '');
     if (!available[cat]) available[cat] = {};
     available[cat][name] = url as string;
   }
